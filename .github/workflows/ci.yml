@@ -11,30 +11,42 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
     strategy:
       matrix:
-        toolchain:
-          - stable
-          - 1.70.0 # MSRV
+        include:
+          - platform: ubuntu-latest
+            toolchain: stable
+            deps: sudo apt-get install libpcsclite-dev
+          - platform: ubuntu-latest
+            toolchain: 1.70.0 # MSRV
+            deps: sudo apt-get install libpcsclite-dev
+          - platform: macos-latest
+            toolchain: stable
+            deps: true
+          - platform: macos-latest
+            toolchain: 1.70.0 # MSRV
+            deps: true
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v1
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
+      - run: ${{ matrix.deps }}
       - run: cargo build --release
       - run: cargo build --release --no-default-features
       - run: cargo build --release --no-default-features --features=passwords
       - run: cargo build --release --features=usb
+      - run: cargo build --release --features=yubihsm-auth
       - run: cargo build --benches
 
   test:
-    runs-on: ubuntu-latest
     strategy:
       matrix:
         toolchain:
           - stable
           - 1.70.0 # MSRV
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v1
       - uses: dtolnay/rust-toolchain@master
@@ -65,6 +77,7 @@ jobs:
         with:
           toolchain: 1.71.0 # pinned to prevent CI breakages
           components: clippy
+      - run: sudo apt-get install libpcsclite-dev
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
