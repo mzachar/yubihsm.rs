@@ -94,3 +94,6 @@ pub use crate::{
     algorithm::Algorithm, audit::AuditOption, authentication::Credentials, capability::Capability,
     client::Client, connector::Connector, domain::Domain, error::*, uuid::Uuid,
 };
+
+#[cfg(feature = "yubihsm-auth")]
+pub use yubikey;

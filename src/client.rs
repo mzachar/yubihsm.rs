@@ -45,7 +45,7 @@ use std::{
 use std::{thread, time::SystemTime};
 
 #[cfg(feature = "yubihsm-auth")]
-use crate::session::PendingSession;
+use crate::session::PendingClient;
 
 #[cfg(feature = "untested")]
 use crate::{
@@ -106,17 +106,26 @@ impl Client {
         Ok(client)
     }
 
-    /// Open session with YubiHSM Auth scheme
+    /// Open session with Yubikey using YubiHSM Auth scheme
     #[cfg(feature = "yubihsm-auth")]
-    pub fn yubihsm_auth(
+    pub fn open_with_yubikey(
         connector: Connector,
         authentication_key_id: object::Id,
-        host_challenge: session::securechannel::Challenge,
-    ) -> Result<PendingSession, Error> {
+        label: &str,
+        yubikey: yubikey::YubiKey,
+    ) -> Result<PendingClient, Error> {
         let timeout = session::Timeout::default();
 
+        let label = label
+            .parse()
+            .map_err(|e| Error::from(ErrorKind::CreateFailed.context(e)))?;
+
+        let hsmauth = yubikey
+            .hsmauth()
+            .map_err(|e| Error::from(ErrorKind::CreateFailed.context(e)))?;
+
         let session =
-            PendingSession::new(connector, timeout, authentication_key_id, host_challenge)?;
+            PendingClient::new(connector, timeout, authentication_key_id, label, hsmauth)?;
         Ok(session)
     }
 

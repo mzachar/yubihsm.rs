@@ -55,7 +55,7 @@ native-tls = { version = "0", optional = true }
 rustls = { version = "0", default-features = false, features = ["ring", "logging", "std", "tls12"], optional = true }
 rustls-pemfile = { version = "2.1.3", optional = true }
 rustls-platform-verifier = { version = "0.3.4", optional = true }
-yubikey = { git = "https://github.com/baloo/yubikey.rs", branch = "baloo/yubihsm-auth", optional = true }
+yubikey = { git = "https://github.com/mzachar/yubikey.rs", branch = "baloo/yubihsm-auth", optional = true }
 
 [dev-dependencies]
 ed25519-dalek = "2"
@@ -88,3 +88,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [[example]]
 name = "connector_http_server"
 required-features = ["http-server", "usb"]
+
+[[example]]
+name = "yubihsm_auth"
+required-features = ["http", "yubihsm-auth", "rustls"]

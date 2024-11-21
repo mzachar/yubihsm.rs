@@ -28,6 +28,7 @@ use crate::{
     connector::Connector,
     device, response,
     serialization::deserialize,
+    Client,
 };
 use std::time::{Duration, Instant};
 
@@ -46,7 +47,7 @@ const TIMEOUT_FUZZ_FACTOR: Duration = Duration::from_secs(1);
 ///
 /// This is used for YubiHSM Auth scheme support.
 #[cfg(feature = "yubihsm-auth")]
-pub struct PendingSession {
+pub struct PendingClient {
     ///// HSM Public key
     //card_public_key: PublicKey,
     /// Connector which communicates with the HSM (HTTP or USB)
@@ -61,24 +62,31 @@ pub struct PendingSession {
     /// Inactivity timeout for this session
     timeout: Timeout,
 
-    /// Challenge generate by the HSM.
-    hsm_challenge: Challenge,
-
     /// ID for this session
     id: Id,
 
     context: Context,
+
+    hsmauth: yubikey::hsmauth::HsmAuth,
+
+    label: yubikey::hsmauth::Label,
 }
 
 #[cfg(feature = "yubihsm-auth")]
-impl PendingSession {
+impl PendingClient {
     /// Creates a new session with the device.
     pub fn new(
         connector: Connector,
         timeout: Timeout,
         authentication_key_id: object::Id,
-        host_challenge: Challenge,
+        label: yubikey::hsmauth::Label,
+        mut hsmauth: yubikey::hsmauth::HsmAuth,
     ) -> Result<Self, Error> {
+        let host_challenge = hsmauth
+            .get_challenge(label.clone())
+            .map_err(|e| Error::from(ErrorKind::CreateFailed.context(e)))?;
+        let host_challenge = Challenge::from_yubikey_challenge(host_challenge);
+
         let (id, session_response) =
             SecureChannel::create(&connector, authentication_key_id, host_challenge)?;
 
@@ -88,19 +96,33 @@ impl PendingSession {
         let created_at = Instant::now();
         let last_active = Instant::now();
 
-        Ok(PendingSession {
+        Ok(PendingClient {
             id,
             connector,
             created_at,
             last_active,
             timeout,
             context,
-            hsm_challenge,
+            hsmauth,
+            label,
         })
     }
 
-    /// Create the session with the provided session keys
-    pub fn realize(self, session_keys: SessionKeys) -> Result<Session, Error> {
+    /// Create the client with derived SessionKeys from Yubikey YubiHSM Auth
+    pub fn realize(mut self, password: &[u8]) -> Result<Client, Error> {
+        let ctx = yubikey::hsmauth::Context::from_buf(
+            self.context
+                .as_slice()
+                .try_into()
+                .map_err(|e| Error::from(ErrorKind::CreateFailed.context(e)))?,
+        );
+
+        let session_keys = self
+            .hsmauth
+            .calculate(self.label, ctx, password)
+            .map_err(|e| Error::from(ErrorKind::AuthenticationError.context(e)))?
+            .into();
+
         let secure_channel = Some(SecureChannel::with_session_keys(
             self.id,
             self.context,
@@ -119,17 +141,7 @@ impl PendingSession {
         let response = session.start_authenticate()?;
         session.finish_authenticate_session(&response)?;
 
-        Ok(session)
-    }
-
-    /// Return the challenge emitted by the HSM when opening the session
-    pub fn get_challenge(&self) -> Challenge {
-        self.hsm_challenge
-    }
-
-    /// Return the id of the session
-    pub fn id(&self) -> Id {
-        self.id
+        Ok(Client::from(session))
     }
 }
 
