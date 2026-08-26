@@ -1,19 +1,19 @@
 //! Persistent HTTP connection to `yubihsm-connector`
 
-use std::io::Read;
-use std::time::Duration;
-#[cfg(feature = "_tls")]
-use std::sync::Arc;
+use super::config::HttpConfig;
+use crate::connector::{self, Connection};
 #[cfg(feature = "native-tls")]
 use native_tls::{Certificate, TlsConnector};
 #[cfg(feature = "rustls")]
 use rustls::ClientConfig;
+use std::io::Read;
+#[cfg(feature = "_tls")]
+use std::sync::Arc;
+use std::time::Duration;
 use ureq::{Agent, AgentBuilder};
-use super::{config::HttpConfig};
-use crate::connector::{self, Connection};
 use uuid::Uuid;
 
-const MAX_BODY_SIZE: u64 = 1024 ^ 3;/*1MB*/
+const MAX_BODY_SIZE: u64 = 1024 * 1024; /*1MB*/
 const USER_AGENT: &str = concat!("yubihsm.rs ", env!("CARGO_PKG_VERSION"));
 
 /// Connection to YubiHSM via HTTP requests to `yubihsm-connector`.
@@ -62,16 +62,22 @@ impl HttpConnection {
         uuid: Uuid,
         body: &[u8],
     ) -> Result<Vec<u8>, connector::Error> {
-        let response = self.agent.post(&format!("{}{}", self.base_url, path))
+        let response = self
+            .agent
+            .post(&format!("{}{}", self.base_url, path))
             .set("X-Request-ID", &uuid.to_string())
             .send_bytes(body)?;
 
-        let mut data = response.header("Content-Length")
+        let mut data = response
+            .header("Content-Length")
             .and_then(|len| len.parse::<usize>().ok())
             .map(|len| Vec::with_capacity(len))
             .unwrap_or(Vec::new());
 
-        response.into_reader().take(MAX_BODY_SIZE).read_to_end(&mut data)?;
+        response
+            .into_reader()
+            .take(MAX_BODY_SIZE)
+            .read_to_end(&mut data)?;
         Ok(data)
     }
 }
@@ -90,29 +96,29 @@ impl Connection for HttpConnection {
 
 #[cfg(feature = "native-tls")]
 fn build_tls_connector(config: &HttpConfig) -> Result<TlsConnector, connector::Error> {
-    use std::fs;
     use crate::connector::ErrorKind;
+    use std::fs;
 
     let mut builder = TlsConnector::builder();
 
     if let Some(path) = config.cacert.as_ref() {
         let data = fs::read(path)?;
-        let cert = Certificate::from_pem(&data)
-            .map_err(|e| ErrorKind::IoError.context(e))?;
+        let cert = Certificate::from_pem(&data).map_err(|e| ErrorKind::IoError.context(e))?;
 
         builder.add_root_certificate(cert);
     }
 
-    builder.build()
+    builder
+        .build()
         .map_err(|e| ErrorKind::IoError.context(e).into())
 }
 
 #[cfg(feature = "rustls")]
 pub fn build_tls_config(config: &HttpConfig) -> Result<ClientConfig, connector::Error> {
+    use crate::connector::ErrorKind;
+    use rustls::RootCertStore;
     use std::fs::File;
     use std::io::BufReader;
-    use rustls::RootCertStore;
-    use crate::connector::ErrorKind;
 
     match config.cacert.as_ref() {
         None => Ok(rustls_platform_verifier::tls_config()),
@@ -120,7 +126,8 @@ pub fn build_tls_config(config: &HttpConfig) -> Result<ClientConfig, connector::
             let mut root_store = RootCertStore::empty();
             let mut reader = BufReader::new(File::open(cert_path)?);
             for cert in rustls_pemfile::certs(&mut reader) {
-                root_store.add(cert?)
+                root_store
+                    .add(cert?)
                     .map_err(|e| ErrorKind::IoError.context(e))?;
             }
             Ok(ClientConfig::builder()
